@@ -120,13 +120,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           flavor: |
-            latest=auto
+            latest=false
             prefix=
             suffix=
           images: |
             ${{ env.GHCR_SLUG }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest-alpine
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -161,7 +161,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ env.PLATFORM_PAIR }}
+          name: digests-${{ env.PLATFORM_PAIR }}-alpine
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
