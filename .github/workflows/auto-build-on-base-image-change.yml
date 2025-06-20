@@ -154,14 +154,61 @@ jobs:
 
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests
+          mkdir -p ${{ runner.temp }}/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "$${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ env.PLATFORM_PAIR }}-alpine
-          path: /tmp/digests/*
+          name: digests-alpine-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
+
+  merge-alpine-containers:
+    needs: build-alpine
+
+    name: Merge Alpine Containers
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download Digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-alpine-*
+          merge-multiple: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GHCR_SLUG }}
+          flavor: |
+            latest=false
+            prefix=
+            suffix=
+          tags: |
+            type=raw,value=latest-alpine
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.GHCR_SLUG }}@sha256:%s ' *)
+
+      - name: Inspect Image
+        run: |
+          docker buildx imagetools inspect ${{ env.GHCR_SLUG }}:${{ steps.meta.outputs.version }}
